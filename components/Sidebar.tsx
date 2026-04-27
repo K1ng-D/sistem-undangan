@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ClipboardList, LayoutDashboard, LogOut, Mail } from "lucide-react";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 import { ReactNode } from "react";
 
 interface SidebarProps {
@@ -15,8 +13,9 @@ export default function Sidebar({ children }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const handleLogout = async () => {
-    await signOut(auth);
+  const handleLogout = () => {
+    localStorage.removeItem("isLogin");
+    localStorage.removeItem("adminEmail");
     router.push("/login");
   };
 

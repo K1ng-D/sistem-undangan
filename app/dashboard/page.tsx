@@ -1,71 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, query } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { useEffect, useState } from "react";
 import { CheckCircle, ClipboardList, Clock, XCircle } from "lucide-react";
 
-type StatusPesanan = "Proses" | "Selesai" | "Diambil" | "Batal";
-
-interface Undangan {
-  id: string;
-  status: StatusPesanan;
-  totalHarga: number;
+interface DashboardSummary {
+  totalPesanan: number;
+  totalProses: number;
+  totalSelesai: number;
+  totalBatal: number;
+  totalPendapatan: number;
 }
 
 export default function DashboardPage() {
-  const [data, setData] = useState<Undangan[]>([]);
+  const [summary, setSummary] = useState<DashboardSummary>({
+    totalPesanan: 0,
+    totalProses: 0,
+    totalSelesai: 0,
+    totalBatal: 0,
+    totalPendapatan: 0,
+  });
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    const q = query(collection(db, "undangan"));
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const result: Undangan[] = snapshot.docs.map((docItem) => ({
-          id: docItem.id,
-          ...(docItem.data() as Omit<Undangan, "id">),
-        }));
-
-        setData(result);
-        setLoading(false);
-      },
-      (err) => {
-        console.error(err);
-        setError("Gagal mengambil data dari database.");
-        setLoading(false);
-      },
-    );
-
-    return () => unsubscribe();
-  }, []);
-
-  const totalPesanan = data.length;
-
-  const totalProses = useMemo(
-    () => data.filter((item) => item.status === "Proses").length,
-    [data],
-  );
-
-  const totalSelesai = useMemo(
-    () => data.filter((item) => item.status === "Selesai").length,
-    [data],
-  );
-
-  const totalBatal = useMemo(
-    () => data.filter((item) => item.status === "Batal").length,
-    [data],
-  );
-
-  const totalPendapatan = useMemo(
-    () =>
-      data
-        .filter((item) => item.status !== "Batal")
-        .reduce((total, item) => total + Number(item.totalHarga || 0), 0),
-    [data],
-  );
 
   const formatRupiah = (value: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -74,6 +30,29 @@ export default function DashboardPage() {
       minimumFractionDigits: 0,
     }).format(value);
   };
+
+  useEffect(() => {
+    const fetchSummary = async () => {
+      try {
+        const response = await fetch("/api/dashboard");
+        const result = await response.json();
+
+        if (!response.ok) {
+          setError(result.message || "Gagal mengambil data dashboard.");
+          return;
+        }
+
+        setSummary(result.data);
+      } catch (err) {
+        console.error(err);
+        setError("Tidak dapat terhubung ke server.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSummary();
+  }, []);
 
   if (loading) {
     return (
@@ -103,7 +82,7 @@ export default function DashboardPage() {
           <ClipboardList className="text-rose-600" size={30} />
           <p className="mt-4 text-sm text-slate-500">Total Pesanan</p>
           <h2 className="mt-1 text-3xl font-bold text-slate-900">
-            {totalPesanan}
+            {summary.totalPesanan}
           </h2>
         </div>
 
@@ -111,7 +90,7 @@ export default function DashboardPage() {
           <Clock className="text-orange-500" size={30} />
           <p className="mt-4 text-sm text-slate-500">Proses</p>
           <h2 className="mt-1 text-3xl font-bold text-slate-900">
-            {totalProses}
+            {summary.totalProses}
           </h2>
         </div>
 
@@ -119,7 +98,7 @@ export default function DashboardPage() {
           <CheckCircle className="text-green-600" size={30} />
           <p className="mt-4 text-sm text-slate-500">Selesai</p>
           <h2 className="mt-1 text-3xl font-bold text-slate-900">
-            {totalSelesai}
+            {summary.totalSelesai}
           </h2>
         </div>
 
@@ -127,7 +106,7 @@ export default function DashboardPage() {
           <XCircle className="text-red-600" size={30} />
           <p className="mt-4 text-sm text-slate-500">Batal</p>
           <h2 className="mt-1 text-3xl font-bold text-slate-900">
-            {totalBatal}
+            {summary.totalBatal}
           </h2>
         </div>
       </div>
@@ -135,7 +114,7 @@ export default function DashboardPage() {
       <div className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
         <p className="text-sm text-slate-500">Total Pendapatan</p>
         <h2 className="mt-2 text-3xl font-bold text-rose-600">
-          {formatRupiah(totalPendapatan)}
+          {formatRupiah(summary.totalPendapatan)}
         </h2>
         <p className="mt-2 text-sm text-slate-500">
           Total dihitung dari semua pesanan kecuali yang berstatus batal.

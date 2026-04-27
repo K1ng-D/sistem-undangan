@@ -1,24 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  updateDoc,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { Edit, Plus, Search, Trash2, X } from "lucide-react";
 
 type StatusPesanan = "Proses" | "Selesai" | "Diambil" | "Batal";
 
 interface Undangan {
-  id: string;
+  id: number;
   namaPelanggan: string;
   noHp: string;
   jenisUndangan: string;
@@ -44,24 +32,30 @@ const initialForm = {
 export default function DataUndanganPage() {
   const [data, setData] = useState<Undangan[]>([]);
   const [form, setForm] = useState(initialForm);
-  const [editId, setEditId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const fetchData = async () => {
+    try {
+      const response = await fetch("/api/undangan");
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result.message || "Gagal mengambil data.");
+        return;
+      }
+
+      setData(result.data);
+    } catch (err) {
+      console.error(err);
+      setError("Tidak dapat terhubung ke server.");
+    }
+  };
+
   useEffect(() => {
-    const q = query(collection(db, "undangan"), orderBy("createdAt", "desc"));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const result: Undangan[] = snapshot.docs.map((docItem) => ({
-        id: docItem.id,
-        ...(docItem.data() as Omit<Undangan, "id">),
-      }));
-
-      setData(result);
-    });
-
-    return () => unsubscribe();
+    fetchData();
   }, []);
 
   const filteredData = useMemo(() => {
@@ -112,44 +106,32 @@ export default function DataUndanganPage() {
       return;
     }
 
-    if (Number(form.jumlahCetak) <= 0) {
-      setError("Jumlah cetak harus lebih dari 0.");
-      return;
-    }
-
-    if (Number(form.hargaSatuan) <= 0) {
-      setError("Harga satuan harus lebih dari 0.");
-      return;
-    }
-
     try {
       setLoading(true);
 
-      const payload = {
-        namaPelanggan: form.namaPelanggan,
-        noHp: form.noHp,
-        jenisUndangan: form.jenisUndangan,
-        modelUndangan: form.modelUndangan,
-        jumlahCetak: Number(form.jumlahCetak),
-        hargaSatuan: Number(form.hargaSatuan),
-        totalHarga,
-        status: form.status,
-        tanggalPesan: form.tanggalPesan,
-      };
+      const url = editId ? `/api/undangan/${editId}` : "/api/undangan";
+      const method = editId ? "PUT" : "POST";
 
-      if (editId) {
-        await updateDoc(doc(db, "undangan", editId), payload);
-      } else {
-        await addDoc(collection(db, "undangan"), {
-          ...payload,
-          createdAt: serverTimestamp(),
-        });
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(form),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result.message || "Gagal menyimpan data.");
+        return;
       }
 
       resetForm();
+      fetchData();
     } catch (err) {
       console.error(err);
-      setError("Terjadi kesalahan saat menyimpan data.");
+      setError("Tidak dapat terhubung ke server.");
     } finally {
       setLoading(false);
     }
@@ -169,16 +151,26 @@ export default function DataUndanganPage() {
     });
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     const yakin = confirm("Yakin ingin menghapus data ini?");
-
     if (!yakin) return;
 
     try {
-      await deleteDoc(doc(db, "undangan", id));
+      const response = await fetch(`/api/undangan/${id}`, {
+        method: "DELETE",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(result.message || "Gagal menghapus data.");
+        return;
+      }
+
+      fetchData();
     } catch (err) {
       console.error(err);
-      alert("Gagal menghapus data.");
+      alert("Tidak dapat terhubung ke server.");
     }
   };
 
@@ -208,7 +200,7 @@ export default function DataUndanganPage() {
             {editId && (
               <button
                 onClick={resetForm}
-                className="rounded-lg bg-slate-100 p-2 text-slate-600 hover:bg-slate-200"
+                className="rounded-lg bg-slate-100 p-2 text-slate-600"
               >
                 <X size={18} />
               </button>
@@ -223,21 +215,19 @@ export default function DataUndanganPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <input
-              type="text"
               placeholder="Nama pelanggan"
               value={form.namaPelanggan}
               onChange={(e) =>
                 setForm({ ...form, namaPelanggan: e.target.value })
               }
-              className="w-full rounded-xl border px-4 py-3 outline-none focus:border-rose-500"
+              className="w-full rounded-xl border px-4 py-3 outline-none"
             />
 
             <input
-              type="text"
               placeholder="Nomor HP"
               value={form.noHp}
               onChange={(e) => setForm({ ...form, noHp: e.target.value })}
-              className="w-full rounded-xl border px-4 py-3 outline-none focus:border-rose-500"
+              className="w-full rounded-xl border px-4 py-3 outline-none"
             />
 
             <select
@@ -245,7 +235,7 @@ export default function DataUndanganPage() {
               onChange={(e) =>
                 setForm({ ...form, jenisUndangan: e.target.value })
               }
-              className="w-full rounded-xl border px-4 py-3 outline-none focus:border-rose-500"
+              className="w-full rounded-xl border px-4 py-3 outline-none"
             >
               <option value="">Pilih jenis undangan</option>
               <option value="Pernikahan">Pernikahan</option>
@@ -256,13 +246,12 @@ export default function DataUndanganPage() {
             </select>
 
             <input
-              type="text"
               placeholder="Model undangan"
               value={form.modelUndangan}
               onChange={(e) =>
                 setForm({ ...form, modelUndangan: e.target.value })
               }
-              className="w-full rounded-xl border px-4 py-3 outline-none focus:border-rose-500"
+              className="w-full rounded-xl border px-4 py-3 outline-none"
             />
 
             <div className="grid grid-cols-2 gap-3">
@@ -273,7 +262,7 @@ export default function DataUndanganPage() {
                 onChange={(e) =>
                   setForm({ ...form, jumlahCetak: e.target.value })
                 }
-                className="w-full rounded-xl border px-4 py-3 outline-none focus:border-rose-500"
+                className="w-full rounded-xl border px-4 py-3 outline-none"
               />
 
               <input
@@ -283,7 +272,7 @@ export default function DataUndanganPage() {
                 onChange={(e) =>
                   setForm({ ...form, hargaSatuan: e.target.value })
                 }
-                className="w-full rounded-xl border px-4 py-3 outline-none focus:border-rose-500"
+                className="w-full rounded-xl border px-4 py-3 outline-none"
               />
             </div>
 
@@ -297,12 +286,9 @@ export default function DataUndanganPage() {
             <select
               value={form.status}
               onChange={(e) =>
-                setForm({
-                  ...form,
-                  status: e.target.value as StatusPesanan,
-                })
+                setForm({ ...form, status: e.target.value as StatusPesanan })
               }
-              className="w-full rounded-xl border px-4 py-3 outline-none focus:border-rose-500"
+              className="w-full rounded-xl border px-4 py-3 outline-none"
             >
               <option value="Proses">Proses</option>
               <option value="Selesai">Selesai</option>
@@ -316,20 +302,16 @@ export default function DataUndanganPage() {
               onChange={(e) =>
                 setForm({ ...form, tanggalPesan: e.target.value })
               }
-              className="w-full rounded-xl border px-4 py-3 outline-none focus:border-rose-500"
+              className="w-full rounded-xl border px-4 py-3 outline-none"
             />
 
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 py-3 font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 py-3 font-semibold text-white disabled:opacity-60"
             >
               <Plus size={20} />
-              {loading
-                ? "Menyimpan..."
-                : editId
-                  ? "Update Pesanan"
-                  : "Tambah Pesanan"}
+              {loading ? "Menyimpan..." : editId ? "Update" : "Tambah"}
             </button>
           </form>
         </div>
@@ -338,8 +320,7 @@ export default function DataUndanganPage() {
           <div className="mb-5 flex items-center gap-3 rounded-xl border px-4 py-3">
             <Search size={20} className="text-slate-400" />
             <input
-              type="text"
-              placeholder="Cari nama, no HP, jenis, model, atau status..."
+              placeholder="Cari data..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full outline-none"
@@ -350,76 +331,52 @@ export default function DataUndanganPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b text-slate-500">
-                  <th className="whitespace-nowrap px-4 py-3">Pelanggan</th>
-                  <th className="whitespace-nowrap px-4 py-3">Jenis</th>
-                  <th className="whitespace-nowrap px-4 py-3">Model</th>
-                  <th className="whitespace-nowrap px-4 py-3">Jumlah</th>
-                  <th className="whitespace-nowrap px-4 py-3">Total</th>
-                  <th className="whitespace-nowrap px-4 py-3">Status</th>
-                  <th className="whitespace-nowrap px-4 py-3">Tanggal</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">
-                    Aksi
-                  </th>
+                  <th className="px-4 py-3">Pelanggan</th>
+                  <th className="px-4 py-3">Jenis</th>
+                  <th className="px-4 py-3">Model</th>
+                  <th className="px-4 py-3">Jumlah</th>
+                  <th className="px-4 py-3">Total</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Tanggal</th>
+                  <th className="px-4 py-3 text-right">Aksi</th>
                 </tr>
               </thead>
 
               <tbody>
-                {filteredData.length > 0 ? (
-                  filteredData.map((item) => (
-                    <tr key={item.id} className="border-b last:border-none">
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <p className="font-semibold text-slate-900">
-                          {item.namaPelanggan}
-                        </p>
-                        <p className="text-xs text-slate-500">{item.noHp}</p>
-                      </td>
+                {filteredData.map((item) => (
+                  <tr key={item.id} className="border-b">
+                    <td className="px-4 py-4">
+                      <p className="font-semibold">{item.namaPelanggan}</p>
+                      <p className="text-xs text-slate-500">{item.noHp}</p>
+                    </td>
+                    <td className="px-4 py-4">{item.jenisUndangan}</td>
+                    <td className="px-4 py-4">{item.modelUndangan}</td>
+                    <td className="px-4 py-4">{item.jumlahCetak} pcs</td>
+                    <td className="px-4 py-4 font-semibold">
+                      {formatRupiah(item.totalHarga)}
+                    </td>
+                    <td className="px-4 py-4">{item.status}</td>
+                    <td className="px-4 py-4">{item.tanggalPesan}</td>
+                    <td className="px-4 py-4">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleEdit(item)}
+                          className="rounded-lg bg-blue-50 p-2 text-blue-600"
+                        >
+                          <Edit size={17} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="rounded-lg bg-red-50 p-2 text-red-600"
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
 
-                      <td className="whitespace-nowrap px-4 py-4">
-                        {item.jenisUndangan}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4">
-                        {item.modelUndangan}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4">
-                        {item.jumlahCetak} pcs
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4 font-semibold text-slate-900">
-                        {formatRupiah(item.totalHarga)}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-600">
-                          {item.status}
-                        </span>
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4">
-                        {item.tanggalPesan}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => handleEdit(item)}
-                            className="rounded-lg bg-blue-50 p-2 text-blue-600 hover:bg-blue-100"
-                          >
-                            <Edit size={17} />
-                          </button>
-
-                          <button
-                            onClick={() => handleDelete(item.id)}
-                            className="rounded-lg bg-red-50 p-2 text-red-600 hover:bg-red-100"
-                          >
-                            <Trash2 size={17} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
+                {filteredData.length === 0 && (
                   <tr>
                     <td
                       colSpan={8}
